@@ -6,7 +6,7 @@ A tiny sound when Claude Code finishes a task, so you can stop staring at the te
 curl -fsSL https://raw.githubusercontent.com/nmamizerov/claude-ding/main/install.sh | bash
 ```
 
-The installer lets you listen to 10 sounds, pick one, and choose where to install it:
+Move through the 10 sounds with ↑/↓ and each one plays right away. Press Enter on the one you like, then choose where to install it:
 
 - **Global**: every project (`~/.claude/settings.json`)
 - **This project**: only the current folder (`.claude/settings.local.json`, not committed)

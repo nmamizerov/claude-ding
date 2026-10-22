@@ -26,13 +26,12 @@ while [ $# -gt 0 ]; do
   esac
 done
 
-b=$'\033[1m' d=$'\033[2m' g=$'\033[32m' r=$'\033[0m'
+b=$'\033[1m' d=$'\033[2m' g=$'\033[32m' c=$'\033[36m' r=$'\033[0m'
 say() { printf '%s\n' "$*"; }
 
 # Interactive input must come from the terminal: under `curl | bash` stdin is the script.
 TTY=""
 if [ -r /dev/tty ] && { : </dev/tty; } 2>/dev/null; then TTY=/dev/tty; fi
-ask() { local reply=""; printf '%s' "$1" >&2; [ -n "$TTY" ] && IFS= read -r reply <"$TTY" || true; printf '%s' "$reply"; }
 
 # ---------- settings.json editing (jq -> node -> python3) ----------
 edit_settings() { # file mode(install|uninstall) cmd notify(0|1)
@@ -126,47 +125,99 @@ else
 fi
 chmod +x "$DEST/play.sh"
 
-preview() { sh "$DEST/play.sh" "$1"; }
+DESCS=("two soft bell notes" "one clean high note" "short bubbly pop" "rising wobble" "8-bit coin" "three quick ticks"
+       "friendly wooden phrase" "deep bell, long tail" "8-bit level up" "water drop")
 
-# ---------- choose sound ----------
+# ---------- sound preview (stops the previous one on every move) ----------
+PREVIEW_PID=""
+player_exec() { # replaces the current (sub)shell with the player, so killing its PID stops the sound
+  local f="$1"
+  if command -v afplay >/dev/null 2>&1; then exec afplay "$f"
+  elif command -v pw-play >/dev/null 2>&1; then exec pw-play "$f"
+  elif command -v paplay >/dev/null 2>&1; then exec paplay "$f"
+  elif command -v aplay >/dev/null 2>&1; then exec aplay -q "$f"
+  elif command -v powershell.exe >/dev/null 2>&1; then
+    local w="$f"; command -v cygpath >/dev/null 2>&1 && w="$(cygpath -w "$f")"
+    command -v wslpath >/dev/null 2>&1 && w="$(wslpath -w "$f")"
+    exec powershell.exe -NoProfile -c "(New-Object Media.SoundPlayer '$w').PlaySync()"
+  fi
+}
+stop_preview() { if [ -n "$PREVIEW_PID" ]; then kill "$PREVIEW_PID" 2>/dev/null || true; PREVIEW_PID=""; fi; }
+preview() { stop_preview; (player_exec "$DEST/sounds/$1.wav" >/dev/null 2>&1) & PREVIEW_PID=$!; }
+
+cleanup() { stop_preview; printf '\033[?25h' >&2; }
+trap cleanup EXIT
+trap 'cleanup; printf "\n" >&2; exit 130' INT TERM
+
+# ---------- arrow-key menu ----------
+# menu <play_sounds 0|1> <default index> <label>...   -> sets MENU_IDX
+menu() {
+  local sounds="$1" sel="$2"; shift 2
+  local opts=("$@") n=$# i key rest last=-1
+  printf '\033[?25l' >&2
+  for i in "${!opts[@]}"; do printf '\n' >&2; done
+  while :; do
+    printf '\033[%dA' "$n" >&2
+    for i in "${!opts[@]}"; do
+      if [ "$i" = "$sel" ]; then printf '\r\033[2K  %s❯ %s%s\n' "$c" "${opts[$i]}" "$r" >&2
+      else printf '\r\033[2K    %s\n' "${opts[$i]}" >&2; fi
+    done
+    if [ "$sounds" = 1 ] && [ "$sel" != "$last" ]; then preview "${SOUNDS[$sel]}"; fi
+    last=$sel
+    key=""; IFS= read -rsn1 key <"$TTY" || true
+    case "$key" in
+      $'\e') rest=""; IFS= read -rsn2 rest <"$TTY" || true
+             case "$rest" in '[A'|'OA') sel=$(( (sel - 1 + n) % n )) ;; '[B'|'OB') sel=$(( (sel + 1) % n )) ;; esac ;;
+      k|w) sel=$(( (sel - 1 + n) % n )) ;;
+      j|s) sel=$(( (sel + 1) % n )) ;;
+      ' ') last=-1 ;;                                  # space: play again
+      [1-9]) [ "$key" -le "$n" ] && sel=$((key - 1)) ;;
+      0) [ "$n" -ge 10 ] && sel=9 ;;
+      q) cleanup; exit 130 ;;
+      ''|$'\r'|$'\n') break ;;                     # Enter
+    esac
+  done
+  printf '\033[%dA\033[J\033[?25h' "$n" >&2         # collapse the list
+  MENU_IDX=$sel
+}
+
 resolve_sound() { # number or name -> full name
   local v="$1" s
-  if [[ "$v" =~ ^[0-9]+$ ]] && [ "$v" -ge 1 ] && [ "$v" -le ${#SOUNDS[@]} ]; then echo "${SOUNDS[$((v-1))]}"; return; fi
+  if [[ "$v" =~ ^[0-9]+$ ]] && [ "$v" -ge 1 ] && [ "$v" -le ${#SOUNDS[@]} ]; then echo "${SOUNDS[$((v-1))]}"; return 0; fi
   for s in "${SOUNDS[@]}"; do
     if [ "${s#*-}" = "$v" ] || [ "$s" = "$v" ]; then echo "$s"; return 0; fi
   done
   return 0
 }
 
+[ -n "$TTY" ] && { say ""; say "${b}🔔 claude-ding${r}  ${d}a sound when Claude Code finishes${r}"; say ""; }
+
+# ---------- choose sound ----------
 if [ -n "$SOUND" ]; then
   CHOSEN="$(resolve_sound "$SOUND")"
   [ -n "$CHOSEN" ] || { say "Unknown sound: $SOUND"; exit 1; }
 elif [ -z "$TTY" ]; then
   CHOSEN="${SOUNDS[0]}"
 else
-  say ""
-  say "${b}🔔 claude-ding${r}  ${d}a sound when Claude Code finishes${r}"
-  say ""
-  for i in "${!SOUNDS[@]}"; do printf '  %2d  %s\n' $((i+1)) "${SOUNDS[$i]#*-}"; done
-  say ""
-  CHOSEN=""
-  while [ -z "$CHOSEN" ]; do
-    n="$(ask "Type a number to listen (1-${#SOUNDS[@]}): ")"
-    s="$(resolve_sound "$n")"
-    [ -n "$s" ] || { say "  ${d}pick 1-${#SOUNDS[@]}${r}"; continue; }
-    preview "$s"
-    yn="$(ask "  ♪ ${s#*-}. Use it? [Y/n] ")"
-    case "$yn" in [nN]*) ;; *) CHOSEN="$s" ;; esac
-  done
+  say "${b}Pick a sound${r}  ${d}↑/↓ to listen · space to replay · enter to choose${r}"
+  labels=()
+  for i in "${!SOUNDS[@]}"; do labels+=("$(printf '%-9s %s%s' "${SOUNDS[$i]#*-}" "$d" "${DESCS[$i]}")"); done
+  menu 1 0 "${labels[@]}"
+  stop_preview
+  CHOSEN="${SOUNDS[$MENU_IDX]}"
+  printf '\033[1A\r\033[2K' >&2
+  say "${g}✓${r} Sound: ${b}${CHOSEN#*-}${r}"
 fi
 
 # ---------- choose scope ----------
 if [ -z "$SCOPE" ]; then
   if [ -n "$TTY" ]; then
-    say ""
-    say "  1  Global          ${d}every project (~/.claude/settings.json)${r}"
-    say "  2  This project    ${d}only $(basename "$PWD") (.claude/settings.local.json)${r}"
-    case "$(ask "Where to install? [1] ")" in 2) SCOPE=project ;; *) SCOPE=global ;; esac
+    say "${b}Where to install?${r}"
+    menu 0 0 "Global        ${d}every project · ~/.claude/settings.json" \
+             "This project  ${d}only $(basename "$PWD") · .claude/settings.local.json"
+    [ "$MENU_IDX" = 1 ] && SCOPE=project || SCOPE=global
+    printf '\033[1A\r\033[2K' >&2
+    say "${g}✓${r} Scope: ${b}$([ "$SCOPE" = global ] && echo global || echo "this project")${r}"
   else
     SCOPE=global
   fi
@@ -180,7 +231,11 @@ esac
 if [ -z "$NOTIFY" ]; then
   NOTIFY=1
   if [ -n "$TTY" ]; then
-    case "$(ask "Also ding when Claude is waiting for your input? [Y/n] ")" in [nN]*) NOTIFY=0 ;; esac
+    say "${b}Also ding when Claude is waiting for your input?${r}"
+    menu 0 0 "Yes  ${d}task done + needs you" "No   ${d}only when a task is done"
+    [ "$MENU_IDX" = 1 ] && NOTIFY=0
+    printf '\033[1A\r\033[2K' >&2
+    say "${g}✓${r} Waiting-for-you ding: ${b}$([ "$NOTIFY" = 1 ] && echo yes || echo no)${r}"
   fi
 fi
 
