@@ -6,22 +6,26 @@
 # Non-interactive flags:
 #   --sound <1-10|name>   which sound to use
 #   --scope <global|project>
+#   --volume <1-100>      loudness (default 40)
+#   --always              ding even while you're looking at Claude Code
 #   --no-notify           don't play when Claude is waiting for your input
 #   --uninstall           remove hooks (global + current project) and files
 set -euo pipefail
 
 REPO_RAW="${CLAUDE_DING_RAW:-https://raw.githubusercontent.com/nmamizerov/claude-ding/main}"
 DEST="$HOME/.claude/claude-ding"
-SOUNDS=(01-chime 02-ping 03-pop 04-bubble 05-coin 06-blip 07-marimba 08-bell 09-levelup 10-droplet)
+SOUNDS=(01-chime 02-ping 03-pop 04-bubble 05-coins 06-blip 07-marimba 08-bell 09-levelup 10-droplet)
 
-SOUND="" SCOPE="" NOTIFY="" UNINSTALL=0
+SOUND="" SCOPE="" NOTIFY="" VOLUME="" MODE="" UNINSTALL=0
 while [ $# -gt 0 ]; do
   case "$1" in
     --sound) SOUND="$2"; shift 2 ;;
     --scope) SCOPE="$2"; shift 2 ;;
+    --volume) VOLUME="$2"; shift 2 ;;
+    --always) MODE=always; shift ;;
     --no-notify) NOTIFY=0; shift ;;
     --uninstall) UNINSTALL=1; shift ;;
-    -h|--help) sed -n '2,12p' "$0" 2>/dev/null || true; exit 0 ;;
+    -h|--help) sed -n '2,14p' "$0" 2>/dev/null || true; exit 0 ;;
     *) echo "Unknown option: $1" >&2; exit 1 ;;
   esac
 done
@@ -125,25 +129,25 @@ else
 fi
 chmod +x "$DEST/play.sh"
 
-DESCS=("two soft bell notes" "one clean high note" "short bubbly pop" "rising wobble" "8-bit coin" "three quick ticks"
+DESCS=("two soft bell notes" "one clean high note" "short bubbly pop" "rising wobble" "coins dropping on a pile" "three quick ticks"
        "friendly wooden phrase" "deep bell, long tail" "8-bit level up" "water drop")
 
 # ---------- sound preview (stops the previous one on every move) ----------
 PREVIEW_PID=""
-player_exec() { # replaces the current (sub)shell with the player, so killing its PID stops the sound
-  local f="$1"
-  if command -v afplay >/dev/null 2>&1; then exec afplay "$f"
-  elif command -v pw-play >/dev/null 2>&1; then exec pw-play "$f"
-  elif command -v paplay >/dev/null 2>&1; then exec paplay "$f"
+player_exec() { # <file> <volume 1-100>; replaces the (sub)shell with the player so killing its PID stops it
+  local f="$1" v; v="$(awk -v x="$2" 'BEGIN { printf "%.2f", x / 100 }')"
+  if command -v afplay >/dev/null 2>&1; then exec afplay -v "$v" "$f"
+  elif command -v pw-play >/dev/null 2>&1; then exec pw-play --volume="$v" "$f"
+  elif command -v paplay >/dev/null 2>&1; then exec paplay --volume="$(awk -v x="$v" 'BEGIN { printf "%d", x * 65536 }')" "$f"
   elif command -v aplay >/dev/null 2>&1; then exec aplay -q "$f"
   elif command -v powershell.exe >/dev/null 2>&1; then
     local w="$f"; command -v cygpath >/dev/null 2>&1 && w="$(cygpath -w "$f")"
     command -v wslpath >/dev/null 2>&1 && w="$(wslpath -w "$f")"
-    exec powershell.exe -NoProfile -c "(New-Object Media.SoundPlayer '$w').PlaySync()"
+    exec powershell.exe -NoProfile -c "Add-Type -AssemblyName PresentationCore; \$p = New-Object System.Windows.Media.MediaPlayer; \$p.Open([uri]'$w'); \$p.Volume = $v; \$p.Play(); Start-Sleep -Milliseconds 2500"
   fi
 }
 stop_preview() { if [ -n "$PREVIEW_PID" ]; then kill "$PREVIEW_PID" 2>/dev/null || true; PREVIEW_PID=""; fi; }
-preview() { stop_preview; (player_exec "$DEST/sounds/$1.wav" >/dev/null 2>&1) & PREVIEW_PID=$!; }
+preview() { stop_preview; (player_exec "$DEST/sounds/$1.wav" "${2:-${VOLUME:-40}}" >/dev/null 2>&1) & PREVIEW_PID=$!; }
 
 cleanup() { stop_preview; printf '\033[?25h' >&2; }
 trap cleanup EXIT
@@ -209,6 +213,59 @@ else
   say "${g}✓${r} Sound: ${b}${CHOSEN#*-}${r}"
 fi
 
+# ---------- volume ----------
+# slider <sound> <start 10-100>   -> sets VOLUME (←/→ or ↑/↓ by 10, plays on every change)
+slider() {
+  local snd="$1" v="$2" key rest last=-1 bar i
+  printf '\033[?25l\n' >&2
+  while :; do
+    bar=""; for i in 1 2 3 4 5 6 7 8 9 10; do
+      if [ $((i * 10)) -le "$v" ]; then bar="$bar█"; else bar="$bar${d}░${r}${c}"; fi
+    done
+    printf '\033[1A\r\033[2K  %s◀ %s ▶%s %3d%%\n' "$c" "$bar" "$r" "$v" >&2
+    if [ "$v" != "$last" ]; then preview "$snd" "$v"; fi
+    last=$v
+    key=""; IFS= read -rsn1 key <"$TTY" || true
+    case "$key" in
+      $'\e') rest=""; IFS= read -rsn2 rest <"$TTY" || true
+             case "$rest" in '[C'|'OC'|'[A'|'OA') v=$(( v < 100 ? v + 10 : 100 )) ;; '[D'|'OD'|'[B'|'OB') v=$(( v > 10 ? v - 10 : 10 )) ;; esac ;;
+      l|d|k|w|+|=) v=$(( v < 100 ? v + 10 : 100 )) ;;
+      h|a|j|s|-) v=$(( v > 10 ? v - 10 : 10 )) ;;
+      ' ') last=-1 ;;
+      q) cleanup; exit 130 ;;
+      ''|$'\r'|$'\n') break ;;
+    esac
+  done
+  printf '\033[1A\r\033[J\033[?25h' >&2
+  VOLUME=$v
+}
+
+if [ -z "$VOLUME" ]; then
+  if [ -n "$TTY" ]; then
+    say "${b}Volume${r}  ${d}←/→ to adjust · enter to confirm${r}"
+    slider "$CHOSEN" 40
+    stop_preview
+    printf '\033[1A\r\033[2K' >&2
+    say "${g}✓${r} Volume: ${b}${VOLUME}%${r}"
+  else
+    VOLUME=40
+  fi
+fi
+[[ "$VOLUME" =~ ^[0-9]+$ ]] && [ "$VOLUME" -ge 1 ] && [ "$VOLUME" -le 100 ] || { say "Volume must be 1-100"; exit 1; }
+
+# ---------- focus ----------
+if [ -z "$MODE" ]; then
+  MODE=unfocused
+  if [ -n "$TTY" ]; then
+    say "${b}When should it ding?${r}"
+    menu 0 0 "Only when I'm not looking  ${d}quiet while the Claude Code window is in front" \
+             "Always"
+    [ "$MENU_IDX" = 1 ] && MODE=always
+    printf '\033[1A\r\033[2K' >&2
+    say "${g}✓${r} Ding: ${b}$([ "$MODE" = always ] && echo always || echo "only when you're not looking")${r}"
+  fi
+fi
+
 # ---------- choose scope ----------
 if [ -z "$SCOPE" ]; then
   if [ -n "$TTY" ]; then
@@ -239,9 +296,9 @@ if [ -z "$NOTIFY" ]; then
   fi
 fi
 
-CMD="sh \"\$HOME/.claude/claude-ding/play.sh\" $CHOSEN"
+CMD="sh \"\$HOME/.claude/claude-ding/play.sh\" $CHOSEN $VOLUME $MODE"
 edit_settings "$SETTINGS" install "$CMD" "$NOTIFY"
 
 say ""
-say "${g}✓${r} Installed ${b}${CHOSEN#*-}${r} → ${SETTINGS/#$HOME/~}"
+say "${g}✓${r} Installed ${b}${CHOSEN#*-}${r} at ${VOLUME}% → ${SETTINGS/#$HOME/~}"
 say "  ${d}Restart Claude Code (or open /hooks) to pick it up. Run the same command again to change the sound.${r}"
