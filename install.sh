@@ -220,7 +220,7 @@ slider() {
   printf '\033[?25l\n' >&2
   while :; do
     bar=""; for i in 1 2 3 4 5 6 7 8 9 10; do
-      if [ $((i * 10)) -le "$v" ]; then bar="$bar█"; else bar="$bar${d}░${r}${c}"; fi
+      if [ $((i * 10)) -le "$v" ]; then bar="${bar}█"; else bar="${bar}${d}░${r}${c}"; fi
     done
     printf '\033[1A\r\033[2K  %s◀ %s ▶%s %3d%%\n' "$c" "$bar" "$r" "$v" >&2
     if [ "$v" != "$last" ]; then preview "$snd" "$v"; fi
