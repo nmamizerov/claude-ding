@@ -57,6 +57,38 @@ MARIMBA = ((1, 1.0), (4, 0.3), (10, 0.05))
 SOFT = ((1, 1.0), (2, 0.25), (3, 0.08))
 
 
+def coin_clink(rng, f0, amp=1.0, dur=0.35):
+    """One metal coin hitting other coins: inharmonic partials + a tiny noise click."""
+    x = t(dur)
+    n = len(x)
+    ratios = (1.0, 1.47, 2.09, 2.56, 3.37)
+    amps = (1.0, 0.7, 0.5, 0.35, 0.2)
+    sig = np.zeros(n)
+    for k, (rt, a) in enumerate(zip(ratios, amps)):
+        f = f0 * rt * rng.uniform(0.995, 1.005)
+        dec = rng.uniform(18, 28) * (1 + 0.6 * k)
+        beat = 1 + 0.25 * np.sin(2 * np.pi * rng.uniform(4, 12) * x)  # shimmer
+        sig += a * np.sin(2 * np.pi * f * x + rng.uniform(0, 6.28)) * np.exp(-dec * x) * beat
+    click_n = int(SR * 0.004)
+    click = np.diff(rng.standard_normal(click_n + 1)) * np.exp(-np.arange(click_n) / (SR * 0.0008))
+    sig[:click_n] += 0.3 * click
+    return amp * sig * env(n, 0.0005, 0)
+
+
+def coins():
+    """A small handful of coins dropping onto a pile, each with a quick bounce."""
+    rng = np.random.default_rng(7)
+    parts, t0 = [], 0.0
+    gaps = (0.0, 0.09, 0.07, 0.12, 0.016, 0.1, 0.08, 0.14)
+    amps = (1.0, 0.8, 0.9, 0.6, 0.55, 0.7, 0.45, 0.35)
+    for gap, a in zip(gaps, amps):
+        t0 += gap
+        f0 = rng.uniform(2000, 3400)
+        parts.append((t0, coin_clink(rng, f0, a)))
+        parts.append((t0 + rng.uniform(0.03, 0.05), coin_clink(rng, f0 * rng.uniform(0.98, 1.02), a * 0.3, 0.2)))
+    return seq(*parts)
+
+
 def make():
     s = {}
     # 1. chime: two soft bell notes, up a fifth
@@ -69,8 +101,8 @@ def make():
     x = t(0.25)
     f = 400 + 900 * (x / 0.25) ** 2 + 60 * np.sin(2 * np.pi * 30 * x)
     s["bubble"] = np.sin(2 * np.pi * np.cumsum(f) / SR) * env(len(x), 0.005, 10)
-    # 5. coin: classic two-step square arpeggio
-    s["coin"] = seq((0, square(988, 0.08, 2)), (0.08, square(1319, 0.35, 8)))
+    # 5. coins: real metal coins dropping onto a pile
+    s["coins"] = coins()
     # 6. blip: three quick ascending ticks
     s["blip"] = seq(*[(i * 0.07, tone(f, 0.12, 25, SOFT)) for i, f in enumerate((880, 1109, 1319))])
     # 7. marimba: friendly three-note phrase
@@ -86,7 +118,7 @@ def make():
 
 
 def save(name, sig):
-    sig = sig / (np.max(np.abs(sig)) + 1e-9) * 0.7  # normalise, leave headroom
+    sig = sig / (np.max(np.abs(sig)) + 1e-9) * 0.4  # quiet by default; play.sh scales further by volume
     fade = min(len(sig), int(SR * 0.01))
     sig[-fade:] *= np.linspace(1, 0, fade)
     pcm = (sig * 32767).astype("<i2")
