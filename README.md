@@ -6,7 +6,7 @@ A tiny sound when Claude Code finishes a task, so you can stop staring at the te
 curl -fsSL https://raw.githubusercontent.com/nmamizerov/claude-ding/main/install.sh | bash
 ```
 
-Move through the 10 sounds with ↑/↓ and each one plays right away. Press Enter on the one you like, set the volume with ←/→, then choose where to install it:
+Move through the 5 sounds with ↑/↓ and each one plays right away. Press Enter on the one you like, set the volume with ←/→, then choose where to install it:
 
 - **Global**: every project (`~/.claude/settings.json`)
 - **This project**: only the current folder (`.claude/settings.local.json`, not committed)
@@ -16,25 +16,25 @@ Restart Claude Code afterwards. To change the sound, run the same command again.
 
 ## Sounds
 
-| # | name | | # | name |
-|---|------|-|---|------|
-| 1 | chime | | 6 | blip |
-| 2 | ping | | 7 | marimba |
-| 3 | pop | | 8 | bell |
-| 4 | bubble | | 9 | levelup |
-| 5 | coins | | 10 | droplet |
+| | name | meaning |
+|---|---|---|
+| 💸 | money | cash counter: money is charging |
+| ⚔️ | battle | sword out of the sheath: ready to fight |
+| 🎤 | mic-drop | mic drop: nothing more to say |
+| 🚀 | ship-it | rocket launch: shipped |
+| 🔔 | zen | singing bowl: calm, no rush |
 
-All sounds are synthesized from scratch by [`tools/generate_sounds.py`](tools/generate_sounds.py). No samples, no licensing questions.
+Real recordings from [Freesound](https://freesound.org), all CC0 (public domain). Credits in [`sounds/CREDITS.md`](sounds/CREDITS.md).
 
 ## Skip the questions
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/nmamizerov/claude-ding/main/install.sh | bash -s -- --sound marimba --scope global
+curl -fsSL https://raw.githubusercontent.com/nmamizerov/claude-ding/main/install.sh | bash -s -- --sound money --scope global
 ```
 
 | flag | |
 |---|---|
-| `--sound <1-10\|name>` | which sound |
+| `--sound <1-5\|name>` | which sound |
 | `--scope <global\|project>` | where to install |
 | `--volume <1-100>` | loudness, default 40 |
 | `--always` | ding even while you're looking at Claude Code |
@@ -49,7 +49,7 @@ It adds a [`Stop` hook](https://docs.claude.com/en/docs/claude-code/hooks) (and 
 {
   "hooks": {
     "Stop": [
-      { "hooks": [{ "type": "command", "command": "sh \"$HOME/.claude/claude-ding/play.sh\" 07-marimba 40 unfocused" }] }
+      { "hooks": [{ "type": "command", "command": "sh \"$HOME/.claude/claude-ding/play.sh\" 01-money 40 unfocused" }] }
     ]
   }
 }

@@ -3,7 +3,8 @@
 # Usage: play.sh <sound> [volume 1-100] [always|unfocused]
 #   unfocused = stay quiet while the window running Claude Code is the one in front
 DIR="$(cd "$(dirname "$0")" && pwd)"
-FILE="$DIR/sounds/${1:-01-chime}.wav"
+FILE="$DIR/sounds/${1:-01-money}.wav"
+[ -f "$FILE" ] || FILE="$(ls "$DIR"/sounds/*.wav 2>/dev/null | head -n 1)"   # hooks from older versions
 VOL="${2:-40}"
 MODE="${3:-always}"
 [ -f "$FILE" ] || exit 0

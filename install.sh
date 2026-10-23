@@ -4,7 +4,7 @@
 #   curl -fsSL https://raw.githubusercontent.com/nmamizerov/claude-ding/main/install.sh | bash
 #
 # Non-interactive flags:
-#   --sound <1-10|name>   which sound to use
+#   --sound <1-5|name>    money, battle, mic-drop, ship-it, zen
 #   --scope <global|project>
 #   --volume <1-100>      loudness (default 40)
 #   --always              ding even while you're looking at Claude Code
@@ -14,7 +14,7 @@ set -euo pipefail
 
 REPO_RAW="${CLAUDE_DING_RAW:-https://raw.githubusercontent.com/nmamizerov/claude-ding/main}"
 DEST="$HOME/.claude/claude-ding"
-SOUNDS=(01-chime 02-ping 03-pop 04-bubble 05-coins 06-blip 07-marimba 08-bell 09-levelup 10-droplet)
+SOUNDS=(01-money 02-battle 03-mic-drop 04-ship-it 05-zen)
 
 SOUND="" SCOPE="" NOTIFY="" VOLUME="" MODE="" UNINSTALL=0
 while [ $# -gt 0 ]; do
@@ -116,6 +116,7 @@ if [ -n "${BASH_SOURCE[0]:-}" ] && [ -f "$(dirname "${BASH_SOURCE[0]}")/play.sh"
   SRC_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"   # running from a clone
 fi
 mkdir -p "$DEST/sounds"
+rm -f "$DEST"/sounds/*.wav   # drop sounds from older versions
 if [ -n "$SRC_DIR" ]; then
   cp "$SRC_DIR/play.sh" "$DEST/play.sh"
   cp "$SRC_DIR"/sounds/*.wav "$DEST/sounds/"
@@ -129,8 +130,9 @@ else
 fi
 chmod +x "$DEST/play.sh"
 
-DESCS=("two soft bell notes" "one clean high note" "short bubbly pop" "rising wobble" "coins dropping on a pile" "three quick ticks"
-       "friendly wooden phrase" "deep bell, long tail" "8-bit level up" "water drop")
+ICONS=("💸" "⚔️ " "🎤" "🚀" "🔔")
+DESCS=("cash counter: money is charging" "sword out of the sheath: ready to fight" "mic drop: nothing more to say"
+       "rocket launch: shipped" "singing bowl: calm, no rush")
 
 # ---------- sound preview (stops the previous one on every move) ----------
 PREVIEW_PID=""
@@ -205,7 +207,7 @@ elif [ -z "$TTY" ]; then
 else
   say "${b}Pick a sound${r}  ${d}↑/↓ to listen · space to replay · enter to choose${r}"
   labels=()
-  for i in "${!SOUNDS[@]}"; do labels+=("$(printf '%-9s %s%s' "${SOUNDS[$i]#*-}" "$d" "${DESCS[$i]}")"); done
+  for i in "${!SOUNDS[@]}"; do labels+=("$(printf '%s %-9s %s%s' "${ICONS[$i]}" "${SOUNDS[$i]#*-}" "$d" "${DESCS[$i]}")"); done
   menu 1 0 "${labels[@]}"
   stop_preview
   CHOSEN="${SOUNDS[$MENU_IDX]}"
