@@ -2,6 +2,8 @@
 
 A tiny sound when Claude Code finishes a task, so you can stop staring at the terminal.
 
+![claude-ding demo](assets/demo.gif)
+
 ```bash
 curl -fsSL https://raw.githubusercontent.com/nmamizerov/claude-ding/main/install.sh | bash
 ```
