@@ -4,6 +4,8 @@ A tiny sound when Claude Code finishes a task, so you can stop staring at the te
 
 ![claude-ding demo](assets/demo.gif)
 
+🔊 [Watch with sound](assets/demo.mp4)
+
 ```bash
 curl -fsSL https://raw.githubusercontent.com/nmamizerov/claude-ding/main/install.sh | bash
 ```
